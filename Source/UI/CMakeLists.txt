@@ -24,6 +24,8 @@ add_sources(open-ephys
 	TimestampSourceSelection.h
 	UIComponent.cpp
 	UIComponent.h
+	ButtonSocketListener.cpp
+	ButtonSocketListener.h
 )
 
 #add nested directories

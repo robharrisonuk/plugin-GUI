@@ -79,6 +79,9 @@ public:
     RecordButton();
     ~RecordButton();
 
+	void StartRecording();
+	void StopRecording();
+
 private:
 	class ButtonSocketListener* m_socket_listener;
 };
