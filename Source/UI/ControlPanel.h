@@ -78,6 +78,9 @@ class RecordButton : public DrawableButton
 public:
     RecordButton();
     ~RecordButton();
+
+private:
+	class ButtonSocketListener* m_socket_listener;
 };
 
 /**

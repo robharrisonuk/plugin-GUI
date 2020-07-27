@@ -29,9 +29,145 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "../Processors/RecordNode/RecordEngine.h"
 #include "../Processors/PluginManager/PluginManager.h"
 
+//#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdlib.h>
+#include <thread>
 
 const int SIZE_AUDIO_EDITOR_MAX_WIDTH = 500;
 //const int SIZE_AUDIO_EDITOR_MIN_WIDTH = 250;
+
+
+class ButtonSocketListener
+{
+public:
+	SOCKET m_socket = INVALID_SOCKET;
+	std::thread* m_thread;
+	bool m_running = true;
+
+#define SOCKET_PORT "1299"
+#define LOCAL_HOST "127.0.0.0"
+
+	ButtonSocketListener()
+	{
+		m_thread = new std::thread(std::bind(&ButtonSocketListener::ThreadRun, this));
+	}
+
+	void ThreadRun()
+	{
+		while (m_running)
+		{
+			// Connect.
+			while (m_socket == INVALID_SOCKET && m_running)
+			{
+				OutputDebugString("Connecting\n");
+				Connect();
+				Sleep(500);
+			}
+
+			char recvbuf[512];
+			char str[256];
+
+			if (m_socket != INVALID_SOCKET && m_running)
+			{
+				int result;
+
+				do {
+
+					int result = recv(m_socket, recvbuf, 512, 0);
+					if (result > 0)
+					{
+						sprintf_s(str, "Bytes received: %d\n", result);
+						OutputDebugString(str);
+					}
+					else if (result == 0)
+					{
+						OutputDebugString("Connection closed\n");
+					}
+					else
+					{
+						sprintf_s(str, "recv failed with error: %d\n", WSAGetLastError());
+						OutputDebugString(str);
+					}
+
+				} while (result > 0);
+
+				closesocket(m_socket);
+				WSACleanup();
+
+				m_socket = INVALID_SOCKET;
+			}
+		}
+	}
+
+	bool Connect()
+	{
+		WSADATA wsaData;
+		struct addrinfo hints;
+		struct addrinfo* addresses;
+		char str[256];
+
+		int error = WSAStartup(MAKEWORD(2, 2), &wsaData);
+		if (error != 0)
+		{
+			sprintf_s(str,"WSAStartup failed with error: %d\n", error);
+			OutputDebugString(str);
+			return false;
+		}
+
+		ZeroMemory(&hints, sizeof(hints));
+		hints.ai_family = AF_UNSPEC;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_protocol = IPPROTO_TCP;
+
+		error = getaddrinfo(LOCAL_HOST, SOCKET_PORT, &hints, &addresses);
+		if (error != 0) 
+		{
+			sprintf_s(str, "getaddrinfo failed with error: %d\n", error);
+			OutputDebugString(str);
+			WSACleanup();
+			return false;
+		}
+
+		for (struct addrinfo* ptr = addresses; ptr != NULL; ptr = ptr->ai_next)
+		{
+
+			// Create a SOCKET for connecting to server
+			m_socket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+			if (m_socket == INVALID_SOCKET) 
+			{
+				sprintf_s(str, "socket failed with error: %ld\n", WSAGetLastError());
+				OutputDebugString(str);
+				WSACleanup();
+				return false;
+			}
+
+			// Connect to server.
+			error = connect(m_socket, ptr->ai_addr, (int)ptr->ai_addrlen);
+			if (error == SOCKET_ERROR)
+			{
+				closesocket(m_socket);
+				m_socket = INVALID_SOCKET;
+				continue;
+			}
+			break;
+		}
+
+		freeaddrinfo(addresses);
+
+		if (m_socket == INVALID_SOCKET) {
+			OutputDebugString("Unable to connect to server!\n");
+			WSACleanup();
+			return false;
+		}
+
+		return true;
+	}
+
+
+};
+
 
 
 PlayButton::PlayButton()
@@ -89,10 +225,13 @@ RecordButton::RecordButton()
     //setBackgroundColours(Colours::darkgrey, Colours::red);
     setClickingTogglesState(true);
     setTooltip("Start/stop writing to disk");
+
+	m_socket_listener = new ButtonSocketListener();
 }
 
 RecordButton::~RecordButton()
 {
+	delete m_socket_listener;
 }
 
 
